@@ -266,7 +266,6 @@ encode_messages([{K, V} | KvList]) ->
 compress(Method, IoData) ->
   Attributes = case Method of
                  gzip   -> ?KPRO_COMPRESS_GZIP;
-                 snappy -> ?KPRO_COMPRESS_SNAPPY;
                  lz4    -> ?KPRO_COMPRESS_LZ4
                end,
   Msg = #kpro_Message{ attributes = Attributes
@@ -279,9 +278,7 @@ compress(Method, IoData) ->
 %% TODO: lz4 compression
 -spec do_compress(kpro_compress_option(), iodata()) -> iodata().
 do_compress(gzip, IoData) ->
-  zlib:gzip(IoData);
-do_compress(snappy, IoData) ->
-  snappy_compress(IoData).
+  zlib:gzip(IoData).
 
 -spec get_api_version(int16() | undefined, kpro_RequestMessage()) -> int16().
 get_api_version(V, _Msg) when is_integer(V) -> V;
@@ -479,8 +476,6 @@ decode_message_stream(Bin, Acc) ->
     case Msg of
       #kpro_Message{attributes = Attr} = Msg when ?KPRO_IS_GZIP_ATTR(Attr) ->
         decode_message_stream(zlib:gunzip(Msg#kpro_Message.value), Acc);
-      #kpro_Message{attributes = Attr} = Msg when ?KPRO_IS_SNAPPY_ATTR(Attr) ->
-        decode_message_stream(java_snappy_unpack(Msg#kpro_Message.value), Acc);
       #kpro_Message{attributes = Attr} = Msg when ?KPRO_IS_LZ4_ATTR(Attr) ->
         decode_message_stream(lz4_unpack(Msg#kpro_Message.value), Acc);
       _Else ->
@@ -564,53 +559,7 @@ req_to_api_key(Req) when is_tuple(Req) ->
 req_to_api_key(Req) when is_atom(Req) ->
   ?REQ_TO_API_KEY(Req).
 
-%% @private snappy-java adds its own header (SnappyCodec)
-%% which is not compatible with the official Snappy
-%% implementation.
-%% 8: magic, 4: version, 4: compatible
-%% followed by any number of chunks:
-%%    4: length
-%%  ...: snappy-compressed data.
-java_snappy_unpack(Bin) ->
-  <<_:16/binary, Chunks/binary>> = Bin,
-  java_snappy_unpack_chunks(Chunks, []).
-
-java_snappy_unpack_chunks(<<>>, Acc) ->
-  iolist_to_binary(Acc);
-java_snappy_unpack_chunks(Chunks, Acc) ->
-  <<Len:32/unsigned-integer, Rest/binary>> = Chunks,
-  case Len =:= 0 of
-    true ->
-      Rest =:= <<>> orelse erlang:error({Len, Rest}), %% assert
-      Acc;
-    false ->
-      <<Data:Len/binary, Tail/binary>> = Rest,
-      Decompressed = snappy_decompress(Data),
-      java_snappy_unpack_chunks(Tail, [Acc, Decompressed])
-  end.
-
 lz4_unpack(_) -> erlang:error({no_impl, lz4}).
-
--ifndef(SNAPPY_DISABLED).
-
-snappy_compress(IoData) ->
-  {ok, Compressed} = snappyer:compress(IoData),
-  Compressed.
-
-snappy_decompress(BinData) ->
-  {ok, Decompressed} = snappyer:decompress(BinData),
-  Decompressed.
-
--else.
-
-snappy_compress(_IoData) ->
-  erlang:error(kafka_protocol_no_snappy).
-
-snappy_decompress(_BinData) ->
-  erlang:error(kafka_protocol_no_snappy).
-
--endif.
-
 
 %%%_* Emacs ====================================================================
 %%% Local Variables:

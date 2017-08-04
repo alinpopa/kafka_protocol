@@ -2,7 +2,7 @@
              [{description,"Kafka protocol erlang library"},
               {vsn,"0.9.2"},
               {registered,[]},
-              {applications,[kernel,stdlib,snappyer]},
+              {applications,[kernel,stdlib]},
               {env,[]},
               {modules,[]},
               {maintainers,["Shi Zaiming","Ivan Dyachkov"]},
